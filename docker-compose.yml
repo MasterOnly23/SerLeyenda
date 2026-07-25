@@ -1,0 +1,102 @@
+name: ser-leyenda
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-serleyenda}
+      POSTGRES_USER: ${POSTGRES_USER:-serleyenda}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-serleyenda}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-serleyenda} -d ${POSTGRES_DB:-serleyenda}",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+      start_interval: 2s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.local}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-unsafe-development-key-change-me}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-serleyenda}:${POSTGRES_PASSWORD:-serleyenda}@db:5432/${POSTGRES_DB:-serleyenda}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:5173}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      DATA_MODE: ${DATA_MODE:-fictional}
+      CATALOG_PATH: ${CATALOG_PATH:-/data/fictional}
+      ALLOW_UNLICENSED_DATA: ${ALLOW_UNLICENSED_DATA:-0}
+      RULES_VERSION: ${RULES_VERSION:-0.0.0}
+    command:
+      [
+        "sh",
+        "-c",
+        "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000",
+      ]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data:/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/', timeout=2)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+      start_interval: 2s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://backend:8000}
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:5173').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+      start_interval: 2s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  frontend_node_modules:

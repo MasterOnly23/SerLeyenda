@@ -1,0 +1,24 @@
+name: Main branch source guard
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  enforce-develop-source:
+    name: Source branch is develop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate pull request source
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [[ "$HEAD_REF" != "develop" ]]; then
+            echo "Only pull requests from develop may target main."
+            echo "Received source branch: $HEAD_REF"
+            exit 1
+          fi

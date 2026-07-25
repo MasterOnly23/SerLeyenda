@@ -1,0 +1,12 @@
+#!/bin/sh
+
+while read local_ref local_sha remote_ref remote_sha
+do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "Push blocked: main only receives pull requests from develop." >&2
+    echo "Push your changes to develop and open a pull request instead." >&2
+    exit 1
+  fi
+done
+
+exit 0
